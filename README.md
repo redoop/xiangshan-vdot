@@ -43,9 +43,10 @@ xiangshan-vdot/
 ├── llvm-xkhmvdot/            # G4 LLVM MC 层补丁（vdot.vv 汇编/反汇编支持）
 ├── nemu-golden/              # G7 NEMU golden（vdot_instr 实现 + 指令级测试）
 ├── spike-golden/             # G7 Spike golden patch + 三方一致验证
-├── b3-synth/                 # G6 B3 面积/功耗/时序综合报告
+├── b3-synth/                 # G6 B3 综合报告 + layouts/ 版图证据（GDS/PNG）
 ├── rtl/                      # Chisel RTL 实现补丁（vdot.vv 硬件链路：yunsuan + 主仓库，含 CHANGES.md 改动说明）
-├── docs/                     # 设计文档（ISA/微架构/软件栈/验证/CheckList）
+├── presentation/             # 竞赛答辩演示（cie2026-vdot-presentation.tex/pdf）
+├── docs/                     # 设计文档（需求/ISA/微架构/软件栈/验证/交付/CheckList/环境/成本 等 12 篇）
 ├── vdot-paper.pdf            # 设计论文（TeX 源码见 vdot-paper.tex）
 ├── README.md                 # 本文档（中文）
 └── README_EN.md              # 英文 README

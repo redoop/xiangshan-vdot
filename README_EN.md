@@ -43,9 +43,10 @@ xiangshan-vdot/
 ├── llvm-xkhmvdot/            # G4 LLVM MC-layer patch (vdot.vv asm/disasm support)
 ├── nemu-golden/              # G7 NEMU golden (vdot_instr impl + instruction-level tests)
 ├── spike-golden/             # G7 Spike golden patch + three-way consistency
-├── b3-synth/                 # G6 B3 area/power/timing synthesis report
+├── b3-synth/                 # G6 B3 synthesis report + layouts/ layout evidence (GDS/PNG)
 ├── rtl/                      # Chisel RTL implementation patches (vdot.vv hw path: yunsuan + main repo, with CHANGES.md)
-├── docs/                     # Design documents (ISA/microarch/software/verif/checklist)
+├── presentation/             # Contest defense slides (cie2026-vdot-presentation.tex/pdf)
+├── docs/                     # Design docs (requirements/ISA/microarch/software/verif/roadmap/checklist/env/cost, 12 docs)
 ├── vdot-paper.pdf            # Design paper (TeX source in vdot-paper.tex)
 ├── README.md                 # This document (Chinese)
 └── README_EN.md              # English README
