@@ -1,0 +1,12 @@
+# Final synthesis + area report
+read_verilog -sv /tmp/Vdot64b.sv
+prep -top Vdot64b
+read_liberty -lib /foss/pdks/sky130A/libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib
+synth -top Vdot64b
+dfflibmap -liberty /foss/pdks/sky130A/libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib
+abc -liberty /foss/pdks/sky130A/libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib -dff
+clean
+# Yosys stat with area (reads .lib area)
+tee -o /tmp/b3_area_report.txt stat
+# write netlist for OpenROAD later if needed
+write_verilog /tmp/Vdot64b_net.v

@@ -1,0 +1,15 @@
+// ============================================================================
+// Patch: llvm/lib/Target/RISCV/RISCVFeatures.td — 追加 Xkhmvdot feature
+// 对齐格式: FeatureVendorXSfvcp (SiFive) / FeatureVendorXVentanaCondOps
+// 插入位置: RISCVFeatures.td 末尾 vendor 扩展区（XSfvcp 之后）
+// ============================================================================
+
+// Xkhmvdot Extensions
+
+def FeatureVendorXkhmvdot
+    : SubtargetFeature<"xkhmvdot", "HasVendorXkhmvdot", "true",
+                       "'Xkhmvdot' (Kunminghu Vector Dot Product): vdot.vv, "
+                       "4xINT8 dot product into INT32 accumulator">;
+def HasVendorXkhmvdot : Predicate<"Subtarget->hasVendorXkhmvdot()">,
+                        AssemblerPredicate<(all_of FeatureVendorXkhmvdot),
+                            "'Xkhmvdot' (Kunminghu Vector Dot Product)">;

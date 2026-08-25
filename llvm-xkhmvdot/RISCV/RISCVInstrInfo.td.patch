@@ -1,0 +1,6 @@
+// ============================================================================
+// Patch: llvm/lib/Target/RISCV/RISCVInstrInfo.td — include Xkhmvdot
+// 插入位置: "Vendor extensions" 区，RISCVInstrInfoXSf.td 之后
+// ============================================================================
+
+include "RISCVXkhmvdot.td"

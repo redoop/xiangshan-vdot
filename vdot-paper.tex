@@ -1,0 +1,331 @@
+% ============================================================================
+% vdot 指令设计论文（2026 CIE RISC-V 竞赛）
+% 编译：xelatex（支持中文）
+% ============================================================================
+\documentclass[11pt]{article}
+
+\usepackage{fontspec}
+\defaultfontfeatures{Renderer=HarfBuzz}
+\usepackage{xeCJK}
+\setCJKmainfont{Heiti SC}
+\setCJKsansfont{Heiti SC}
+\setCJKmonofont{Heiti SC}
+\setmainfont{Times New Roman}
+\setmonofont{Andale Mono}[Scale=MatchLowercase]
+
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{amsmath,amssymb}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,calc,shapes.geometric}
+
+\definecolor{TechBlue}{RGB}{22,84,140}
+\definecolor{GreenOK}{RGB}{46,139,87}
+\definecolor{LightGray}{RGB}{245,245,245}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  backgroundcolor=\color{LightGray},
+  commentstyle=\color{gray}
+}
+
+\title{\textbf{面向边缘 AI 大语言模型推理的 RISC-V 自定义点积指令\newline vdot 设计与实现——基于香山昆明湖 V2}}
+\author{XXX \and YYY \and ZZZ}
+\date{2026 年 8 月}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent\textbf{Abstract}---Dot product is the computational core of large language model (LLM) inference and recommendation systems. The RISC-V Vector Extension (RVV 1.0) lacks a native integer dot-product instruction, forcing INT8 GEMM kernels to compose multiple instructions (unpack, sign-extend, widening multiply-accumulate, repack), which limits throughput and energy efficiency on edge devices. This paper presents \emph{vdot}, a custom vector dot-product instruction designed for the XiangShan Kunminghu V2 (kunminghu-v2) out-of-order processor. \texttt{vdot.vv} performs a 4$\times$INT8 dot product accumulated into an INT32 lane, with RVV-compliant masking, tail, and vstart semantics. We detail the ISA design (funct6=111001, OPMVV), the microarchitecture (a compact 64-bit dot-product core with a two-stage pipeline integrated into the VFEX0 execution unit), the software stack (intrinsics, weight packer, INT8 GEMM kernels, and an LLVM MC-layer patch), and a three-golden verification methodology (NEMU, Spike, and RTL difftest). Measured on the Verilator-based emulator, vdot reduces INT8 GEMM instruction count by 12.7$\times$ and net cycles by 8.2$\times$ versus a scalar baseline, achieves 1.78 cycles/instruction throughput and 7.02 cycles dependent-chain latency, and the end-to-end TinyGPT INT8 inference demo runs 13,615 instructions per token. Synthesis with sky130 shows the unit adds only 0.014\% of the full-core area, far below the 0.5\% budget.
+\end{abstract}
+
+\tableofcontents
+
+% ============================================================================
+\section{引言}
+% ============================================================================
+Transformer 架构已成为大语言模型（LLM）与推荐系统的计算基石，其自注意力机制的 QK$^\mathsf{T}$ 与 AV 矩阵乘、FFN 的两次 GEMM 均由海量点积构成。以 GPT-2 为例，点积占总计算量的 70\% 以上；推荐系统中 78\% 的个性化排序以点积为核心指标。在资源受限的边缘端部署 LLM 时，点积的执行效率直接决定推理延迟、吞吐与能效。
+
+边缘 LLM 推理的主流实践是 INT8 量化（W8A8）：INT8 乘法器的面积/功耗约为 FP32 的 1/10--1/20，算力密度（TOPS/mm$^2$）远高于 FP16/FP32，且感知量化（PTQ）在 7B 以下模型上可保持接近 FP16 的任务精度。因此，一条高效的 INT8 点积指令是边缘 LLM 推理的核心加速原语。
+
+然而，RVV 1.0 的指令集中没有一条“一组 INT8 元素点积累加”的原生指令。完成一次 INT32 累加需要组合 \texttt{vzext}/\texttt{vsext}（拆包与符号扩展）、\texttt{vwmaccu}（宽乘累加）、位宽升级与 \texttt{vnsrl}（打包回 INT8 布局）等多条指令，导致指令数多、寄存器压力大、动态功耗高，无法发挥 128-bit 数据通路的峰值乘加能力。为此，RISC-V 官方正在推进 \texttt{Zvdot4a8i} fast-track 提案（4$\times$INT8 点积到 INT32 累加），SiFive（Xsfvdot）与 SpacemiT（XSMTVDot）等厂商亦已发布自定义实现。
+
+本文在香山昆明湖 V2（kunminghu-v2）上设计并实现一条自定义点积指令 \texttt{vdot.vv}：指令语义与助记符对齐 \texttt{Zvdot4a8i}，作为自定义扩展 \texttt{Xkhmvdot} 先行落地；官方扩展正式发布后仅需改扩展名即可平滑迁移。本文的主要贡献包括：
+
+\begin{enumerate}
+  \item \textbf{ISA 设计}：定义 \texttt{vdot.vv} 的编码（funct6=111001, funct3=010, OP-V 空间）、数据视图（32-bit 元素 = 4 个打包 INT8，小端）与完整 RVV 语义继承（vl/vstart/掩码/尾元素/异常）。
+  \item \textbf{微架构实现}：设计紧凑的 64-bit 点积核心（8 个 8$\times$8 乘法器 + 加法树 + 32-bit 回绕累加，两级流水），以最小侵入方式集成进 VFEX0 执行单元，新增面积仅 0.014\%。
+  \item \textbf{软件栈}：交付 intrinsic 头文件（C 参考/RVV/内联汇编三路径）、权重打包器、INT8 GEMM 微内核、LLVM MC 层补丁。
+  \item \textbf{三方验证}：NEMU、Spike、RTL（difftest）三方一致的验证方法学，覆盖固定用例、280 组随机差分、riscv-tests 回归与真实负载（GEMM、注意力、端到端 LLM）。
+\end{enumerate}
+
+% ============================================================================
+\section{背景与相关工作}
+% ============================================================================
+\subsection{RVV 1.0 的整数点积缺口}
+RVV 1.0（VLEN=128，SEW=8/16/32/64）完整实现了掩码、尾元素、分段访存等机制，但缺乏原生整数点积指令。现有做法是组合 \texttt{vwmaccu.vv}（INT8$\times$INT8 到 INT16 宽乘累加）完成 INT8 到 INT16 累加，再加宽到 INT32，或改用 \texttt{vwmacc} 链。完成一次 INT32 累加需要约 8--12 条指令（拆包/符号扩展/位宽升级/打包），K 维累加被“胶水指令”拖累，无法发挥 128-bit 数据通路的峰值乘加能力。
+
+\subsection{行业现状：原生 vdot 收敛}
+\begin{table}[htbp]
+\centering
+\caption{原生点积指令的行业现状}
+\label{tab:industry}
+\begin{tabular}{l l l}
+\toprule
+\textbf{来源} & \textbf{指令/扩展} & \textbf{形态} \\
+\midrule
+RISC-V 官方（fast-track） & Zvdot4a8i / Zvqdotq & 4$\times$INT8 到 INT32（vdota4.vv 等） \\
+SiFive & Xsfvdot / Xsfvqmacc & 自定义 INT8 矩阵乘-点积扩展 \\
+SpacemiT & XSMTVDot & 自定义向量点积扩展（已合入 LLVM） \\
+香山昆明湖 & 无 & \textbf{缺口——本文切入点} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{香山昆明湖 V2 向量后端}
+kunminghu-v2 的向量执行单元位于 \texttt{backend/fu/wrapper/}（VIAluFix/VIMacU/VIDiv/VIPU 等），公共框架在 \texttt{backend/fu/vector/}（VecPipedFuncUnit/VecNonPipedFuncUnit/Mgu/Mgtu）。昆明湖没有任何现成自定义指令钩子，vdot 必须走完整标准链路：编码登记、解码表映射、FuType/FuConfig、执行单元、调度/写回。
+
+% ============================================================================
+\section{ISA 设计}
+% ============================================================================
+\subsection{设计原则}
+\begin{enumerate}
+  \item \textbf{RVV 1.0 语义一致}：vdot 完整继承 vl/vstart/掩码/尾元素/异常语义，与 vsetvl 无缝协作，保证 difftest/golden 语义唯一。
+  \item \textbf{与官方方向对齐}：语义与助记符对齐 Zvdot4a8i，作为 Xkhmvdot 自定义扩展先行实现。
+  \item \textbf{最小侵入}：编码落在 OP-V 主操作码（1010111）未占用空间，不触碰既有 RVV 编码。
+  \item \textbf{可验证}：每条指令语义都有可执行伪代码与参考实现。
+\end{enumerate}
+
+\subsection{指令编码}
+vdot 使用 RVV 主操作码 OP-V（\texttt{1010111}），编码模板与乘累加指令族一致：
+\begin{equation}
+\texttt{vdot.vv vd, vs1, vs2} \quad:\quad
+\underbrace{\texttt{111001}}_{\text{funct6}}
+\ \underbrace{\texttt{vm}}_{\text{bit 25}}
+\ \underbrace{\texttt{vs2} \ \texttt{vs1}}_{\text{源}}
+\ \underbrace{\texttt{010}}_{\text{funct3=OPMVV}}
+\ \underbrace{\texttt{vd}}_{\text{目的}}
+\ \underbrace{\texttt{1010111}}_{\text{OP-V}}
+\end{equation}
+其中 funct6=\texttt{111001} 经脚本核对在 OP-V 空间空闲（与 	exttt{VWMACCU\_VV} 同格式，funct3=010 空间未占用）。funct3 选 \texttt{010}（OPMVV）是因为 vdot 在语义上是“打包 4 元素宽乘累加”，与 MAC 族同类。此选型与 RISC-V 官方 Zvdot4a8i 方向一致。
+
+\subsection{数据视图与语义}
+\begin{itemize}
+  \item 所有向量操作数以 \textbf{SEW=32} 元素视图访问（vsew 必须为 32，否则 illegal）。
+  \item 每个 32-bit 元素内部重新解释为 \textbf{4 个打包的 8-bit 子元素}（little-endian，子元素 j 位于位 $[8j,8j+7]$）。
+  \item 元素计数（vl/vstart）单位为 32-bit 元素，无 vl mod 4 对齐约束。
+\end{itemize}
+
+权威伪代码（vdota4.vv，其余符号性变体仅替换扩展方式）：
+\begin{lstlisting}[language=C]
+SEW = 32;  VLMAX = LMUL * VLEN / SEW
+for i in [vstart, vl):
+    if vm == 0 and mask[i] == 0: continue   # masked-off
+    acc = vd[i]                             # 32-bit old value
+    for j in 0..3:
+        a = Sub8(vs2[i], j);  b = Sub8(vs1[i], j)
+        acc = acc + a * b                   # wrap-around (mod 2^32)
+    vd[i] = acc
+# tail elements: vta agnostic/undisturbed; vstart!=0 -> illegal
+\end{lstlisting}
+
+符号性矩阵（v1.0 已实现 vdot.vv = signed$\times$signed；其余 7 种变体预留）：
+\begin{table}[htbp]
+\centering
+\caption{符号性变体与预留编码}
+\label{tab:signed}
+\begin{tabular}{l c c c l}
+\toprule
+\textbf{指令} & \textbf{funct6} & \textbf{funct3} & \textbf{vm} & \textbf{状态} \\
+\midrule
+vdota4.vv（vdot.vv） & 111001 & 010 & 25 & \textcolor{GreenOK}{\textbf{已实现}} \\
+vdota4.vx & 111001 & 110 & 25 & 预留 \\
+vdota4u.vv/vx & 010100 & 010/110 & 25 & 预留 \\
+vdota4su.vv/vx & 010101 & 010/110 & 25 & 预留 \\
+vdota4us.vv/vx & 010110 & 010/110 & 25 & 预留 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{异常与交互约束}
+违反以下任一约束即 illegal instruction：(C1) vsew $\neq$ 32；(C2) vlmul 使 VLMAX$<$1 或寄存器组越界；(C3) mstatus.VS=Off；(C4) 已定义空间内未定义的 funct3/funct6 组合。vstart$\neq$0 按昆明湖对所有向量算术指令一致的策略判 illegal。
+
+% ============================================================================
+\section{微架构设计}
+% ============================================================================
+\subsection{总体集成}
+vdot 单元挂入 \textbf{VFEX0} 执行单元（与 VfmaCfg/VialuCfg/VimacCfg/VppuCfg 同 EXU），复用现有读端口（3$\times$VfRD + V0RD + VlRD）与写端口（VfWB(0,0)），\textbf{不新增 VPRF 端口}。VdotCfg 配置：piped=true、writeVecRf=true、writeV0Rf=true、latency=CertainLatency(2)、destDataBits=128、exceptionOut=illegalInstr。
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[node distance=0.5cm, box/.style={draw, rounded corners, minimum height=0.8cm, align=center, fill=LightGray}]
+  \node[box] (sp) {VecDataSplitModule 3x\\ vs1/vs2/oldVd 128 到 2x64};
+  \node[box, below=of sp] (core) {Vdot64b x2\\ 64-bit 点积核心（2 级流水）};
+  \node[box, below=of core] (mgu) {Mgu(128)\\ mask/tail/非法};
+  \node[box, left=0.6cm of core, fill=white] (type) {VdotSrcType\\Module};
+  \draw[-{Stealth}] (sp) -- (core);
+  \draw[-{Stealth}] (core) -- (mgu);
+  \draw[-{Stealth}] (type) -- (core);
+  \node[above=of sp, box, fill=white] (fu) {VecPipedFuncUnit (VFEX0)};
+  \draw[-{Stealth}] (fu) -- (sp);
+\end{tikzpicture}
+\caption{vdot 执行单元结构（VdotU）}
+\label{fig:microarch}
+\end{figure}
+
+\subsection{Vdot64b 点积核心}
+每个 64-bit 切片计算 2 个独立的 4 元素点积：
+\begin{equation}
+\text{lane}_j = \text{oldVd}[32j{+}31{:}32j] + \sum_{i=0}^{3} \text{sext8}(\text{vs1}[8(4j{+}i){+}7{:}8(4j{+}i)]) \cdot \text{sext8}(\text{vs2}[8(4j{+}i){+}7{:}8(4j{+}i)])
+\end{equation}
+
+数据通路为两级流水：
+\begin{enumerate}
+  \item \textbf{Stage 1 (fire)}：锁存 vs1/vs2/oldVd 输入（RegEnable）。
+  \item \textbf{组合逻辑}：8 个 8$\times$8 符号乘法（16-bit 积）、4 组部分和（17-bit 带进位加）、2 组 lane 和（18-bit）、每 lane oldVd + laneSum.pad(32) 截断到 32-bit（回绕）。
+  \item \textbf{Stage 2 (fireS1)}：锁存结果，两个周期后有效，与 VdotCfg.latency=2 严格对齐。
+\end{enumerate}
+
+关键实现细节：
+\begin{itemize}
+  \item \textbf{符号扩展}：laneSum.pad(32) 做符号扩展（SInt.pad），避免直接 asUInt 零扩展损坏负数结果——这是语义正确性的关键。
+  \item \textbf{加法宽度}：16 到 17 到 18-bit 逐级 +1 防溢出；最坏情况 4$\times$(127$\times$-128) = -65024 在 18-bit 范围内。
+  \item \textbf{oldVd 同步锁存}：核心必须是 2 级流水而非纯组合——组合化会让 wrapper 两个周期后消费时 oldVd 与源错位、累加丢失（P1 阶段的误诊教训）。
+\end{itemize}
+
+\subsection{调度集成与关键 bug 修复}
+依赖旧 vd 累加的指令（vmacc/vwmacc*/vdot）必须在 \texttt{DecodeUnit.scala} 的 \texttt{vmaInsts} 列表中登记，否则 \texttt{isDependOldVd=false} 导致 IQ/dispatch 在 ignoreTail/ignoreWhole 时把 srcType(2) 置 no、跳过 oldVd 读取（src(2)=0），表现为“结果只算纯点积、不累加”。这是 vdot 差分 bug 的最终根因，修复为在 \texttt{vmaInsts} 加入 	exttt{VDOT\_VV}。此教训适用于任何新增累加型向量指令。
+
+% ============================================================================
+\section{软件栈}
+% ============================================================================
+\subsection{Intrinsic 头文件}
+	exttt{xkhmvdot\_intrin.h} 提供三级路径：
+\begin{enumerate}
+  \item \textbf{C 参考实现}（vdot\_ref）：无汇编支持时的功能正确 fallback，与 NEMU/RTL 逐点语义一致。
+  \item \textbf{RVV intrinsic}（\_\_riscv\_vdot\_vv\_i32m1）：封装 vint32m1\_t 类型。
+  \item \textbf{内联汇编}（-DXKHMVDOT\_ASM=1）：汇编器支持后直接发 vdot.vv。
+\end{enumerate}
+
+\subsection{权重打包器与 INT8 GEMM}
+	exttt{weight\\_packer} 将权重按“每字 = 同一通道 K 维连续 4$\times$INT8，小端”打包（K 补 0），与 vdot 的打包视图一一对应。	exttt{gemm\\_i8} 微内核提供标量参考与 RVV 加速两条路径，支持 per-row/per-channel 反量化。
+
+\subsection{LLVM 支持（MC 层）}
+为 \texttt{vdot.vv} 助记符提供汇编/反汇编支持：\texttt{RISCVFeatures.td} 新增 \texttt{FeatureVendorXkhmvdot}，\texttt{RISCVXkhmvdot.td} 定义 	exttt{VDOT\\_VV}（VALUrVV 0b111001，EarlyClobber=1），clang 	exttt{riscv\\_vector.td} 登记 intrinsic，配套 MC/CodeGen 测试。IR 自动向量化因 vdot 的异构类型（源 e8/目 e32）留作 v2.0。
+
+% ============================================================================
+\section{验证方法学}
+% ============================================================================
+\subsection{三方 golden 一致性}
+\begin{itemize}
+  \item \textbf{NEMU}：实现 vdot\_instr（vsew=e32 强制、逐元素点积、回绕累加、掩码/尾/vstart 处理），作为 difftest 主 golden。
+  \item \textbf{Spike}：补 vdot\_vv.h（复用 VQDOT），验证 lane0=0x0a 到 0x14（累加）与 NEMU/RTL 三方一致。
+  \item \textbf{C 参考}：vdot\_ref 与 Vdot64bRef（单元测试参考模型）。
+\end{itemize}
+
+\subsection{测试层次}
+\begin{table}[htbp]
+\centering
+\caption{验证层次与结果}
+\label{tab:verif}
+\begin{tabular}{l l l}
+\toprule
+\textbf{层次} & \textbf{方法} & \textbf{结果} \\
+\midrule
+L0 指令语义 & Vdot64bSpec 固定 4 + 随机 32 & \textcolor{GreenOK}{全部通过} \\
+L1 硬件功能 & emu 固定 4 + 随机 280 差分 & \textcolor{GreenOK}{280/280 GOOD TRAP} \\
+L2 系统集成 & riscv-tests 回归（Spike 路径） & \textcolor{GreenOK}{63 PASS} \\
+L3 真实负载 & GEMM/注意力/LLM 演示 & \textcolor{GreenOK}{全部通过} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{关键 bug 与修复}
+P1 阶段差分发现 vdot\_test（两次累加）失败：NEMU 正确（0x14），RTL 只算单次（0x0a）。经波形（VCD id 局部化不可靠）与源码级比对，最终定位为 vmaInsts 缺 VDOT\_VV（见第 3.3 节），修复后 4/4 + 随机 280/280 全部通过。
+
+% ============================================================================
+\section{评估}
+% ============================================================================
+\subsection{实验设置}
+评估基于 Verilator 全片仿真（emu，kunminghu-v2 e12436c + vdot 改动），裸机 bare-metal 测试栈（自建 	exttt{\\_start} 汇编桩、stdint shim、-mcmodel=medany）。RTL 周期为真实周期；NEMU 用于端到端演示（12.46M instr/s，比 emu 快约 350 倍）。
+
+\subsection{B0：微基准}
+\begin{table}[htbp]
+\centering
+\caption{B0 微基准（N=1000，boot 8,331 周期扣减）}
+\label{tab:b0}
+\begin{tabular}{l c c}
+\toprule
+\textbf{指标} & \textbf{vdot} & \textbf{vadd 基线 (e32)} \\
+\midrule
+独立流吞吐（4 路 ILP） & \textbf{1.78 cyc/条} & 1.31 cyc/条 \\
+依赖链时延 & \textbf{7.02 cyc/条} & 6.03 cyc/条 \\
+\bottomrule
+\end{tabular}
+\end{table}
+vdot 单条完成 4$\times$4 点积+累加，只比 vadd 多约 0.5 cyc 吞吐 / 1 cyc 时延，等效计算密度远高。
+
+\subsection{B1：INT8 GEMM}
+\begin{table}[htbp]
+\centering
+\caption{B1 GEMM（M=N=K=16，emu 实测）}
+\label{tab:b1}
+\begin{tabular}{l c c c}
+\toprule
+\textbf{指标} & \textbf{vdot GEMM} & \textbf{标量 C GEMM} & \textbf{提升} \\
+\midrule
+差分正确性 & GOOD TRAP & GOOD TRAP & --- \\
+指令数 & 6,797 & 86,554 & \textbf{12.7 倍更少} \\
+GEMM 净周期（扣 boot） & 约 2,558 & 约 21,061 & \textbf{约 8.2 倍更快} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{B2：端到端 LLM 演示}
+TinyGPT 微型 Transformer（1 层，D=32，INT8 量化，vdot 加速全部 GEMM + 标量 softmax）在 NEMU 上完整推理 32 tokens：\textbf{435,675 条指令（13,615 instr/token）}，trap code 0xB2 通过。估算在 1GHz/IPC=2 下约 6.8 微秒/token。
+
+\subsection{B3：面积评估}
+在 IIC-OSIC-TOOLS 容器 Yosys 0.67 + sky130\_fd\_sc\_hd（tt\_025C\_1v80）综合：
+\begin{itemize}
+  \item \textbf{Vdot64b}（64-bit）：3,435 cells / 34,551 平方微米（0.0346 mm$^2$）。
+  \item \textbf{VdotU}（128-bit 通路）：约 69,101 平方微米（0.0691 mm$^2$）。
+  \item 相对全核（130nm 等效估算）：\textbf{0.014\%}，远低于 0.5\% 目标。
+  \item 时序：乘加树 3--4 级逻辑，支持约 700MHz--1GHz。
+\end{itemize}
+
+% ============================================================================
+\section{结论与展望}
+% ============================================================================
+本文在香山昆明湖 V2 上设计、实现并验证了自定义点积指令 \texttt{vdot.vv}。通过 ISA 对齐 \texttt{Zvdot4a8i}、微架构最小侵入（面积 0.014\%）、完整软件栈与三方 golden 验证，vdot 在 INT8 GEMM 上实现 12.7 倍指令数减少与 8.2 倍周期加速，端到端 LLM 推理演示验证了实用性。
+
+\textbf{展望}：(1) 官方 Zvdot4a8i 发布后平滑迁移扩展名；(2) 实现其余 7 个符号性/操作数变体（vx 形式）；(3) LLVM IR intrinsic 与自动向量化（需异构类型支持）；(4) FPGA 原型验证与真实 LLM 端到端部署。
+
+% ============================================================================
+\section*{致谢}
+% ============================================================================
+感谢香山开源社区与 2026 CIE 全国 RISC-V 大赛提供的平台。
+
+\begin{thebibliography}{9}
+\bibitem{riscv-v}
+RISC-V International. RISC-V V Vector Extension, Version 1.0. Available: \url{https://github.com/riscv/riscv-v-spec}
+\bibitem{zvdot}
+RISC-V International. Dot-Product Zvdot4a8i / Zvqdotq Ratification Plan. Available: \url{https://riscv.atlassian.net/}
+\bibitem{xiangshan}
+OpenXiangShan. XiangShan High-Performance RISC-V Processor. Available: \url{https://github.com/OpenXiangShan/XiangShan}
+\bibitem{llvm-zvdot}
+LLVM Project. RISC-V Zvdot4a8i support, PR 184089. Available: \url{https://github.com/llvm/llvm-project/pull/184089}
+\bibitem{riscv-vector-tests}
+RISC-V Vector Tests. Available: \url{https://github.com/riscv-non-isa/riscv-vector-tests}
+\end{thebibliography}
+
+\end{document}

@@ -1,0 +1,12 @@
+// ============================================================================
+// Patch: clang/include/clang/Basic/riscv_vector.td — vdot intrinsic 登记
+// 插入位置: "11.13 Vector Single-Width Integer Multiply-Add" 区，vnmsub 之后
+// 模板: RVVIntTerBuiltinSet (vmacc 同款, ternary accumulate: vd,vs1,vs2,vl)
+//   vdot 仅 int32 (v) 类型: 自定义声明而非复用 csil 全集
+// ============================================================================
+
+// 11.14b. Custom Xkhmvdot: vdot.vv (4xINT8 dot product -> INT32 accumulate)
+let UnMaskedPolicyScheme = HasPolicyOperand in {
+  defm vdot : RVVOutOp1BuiltinSet<"vdot", "i",
+                                  [["vv", "v", "vvvv"]]>;
+}

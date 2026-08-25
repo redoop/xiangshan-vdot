@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P1 vdot 差分复测检查清单（emu 重建完成后执行） - XiangShanLab</title>
+<style>*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}:root{--navy:#0f0e1a;--accent:#6c63ff;--bg:#f8f9fc;--text:#1e1e2e;--text-secondary:#5a5a7a;--border:#e8e8f0;--code-bg:#f0f0f8}html{scroll-behavior:smooth;font-size:16px}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Noto Sans SC','PingFang SC','Microsoft YaHei',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.8}.topbar{background:var(--navy);color:#fff;padding:0 1.5rem;height:52px;display:flex;align-items:center;gap:1rem;position:sticky;top:0;z-index:50}.topbar a{color:rgba(255,255,255,0.7);text-decoration:none;font-size:.85rem}.topbar a:hover{color:#fff}.topbar .brand{font-weight:700;font-size:.95rem;color:#fff}.topbar .sep{color:rgba(255,255,255,0.25)}.topbar .breadcrumb{font-size:.78rem;color:rgba(255,255,255,0.5);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.container{max-width:880px;margin:0 auto;padding:2rem 1.5rem 4rem}h1{font-size:2rem;font-weight:800;margin:.5rem 0 1rem;color:var(--navy)}h2{font-size:1.5rem;font-weight:700;margin:1.75rem 0 .75rem;padding-bottom:.4rem;border-bottom:2px solid var(--border);color:var(--navy)}h3{font-size:1.2rem;font-weight:600;margin:1.5rem 0 .5rem;color:var(--navy)}h4{font-size:1.05rem;font-weight:600;margin:1.25rem 0 .4rem}p{margin:.6rem 0}a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}ul,ol{margin:.5rem 0 .5rem 1.5rem}li{margin:.3rem 0}strong{font-weight:700}em{font-style:italic}code{background:var(--code-bg);padding:.15rem .4rem;border-radius:4px;font-family:'SF Mono','Fira Code','Cascadia Code',Menlo,monospace;font-size:.85em}pre{background:#1e1e2e;color:#e0e0e0;padding:1rem 1.25rem;border-radius:10px;overflow-x:auto;margin:.75rem 0;font-size:.85rem;line-height:1.6}pre code{background:none;padding:0;color:inherit;font-size:inherit}blockquote{border-left:4px solid var(--accent);background:rgba(108,99,255,0.04);padding:.75rem 1rem;margin:.75rem 0;border-radius:0 8px 8px 0;color:var(--text-secondary)}table{width:100%;border-collapse:collapse;margin:.75rem 0;font-size:.875rem}th,td{padding:.5rem .75rem;text-align:left;border:1px solid var(--border)}th{background:var(--navy);color:#fff;font-weight:600}img{max-width:100%;height:auto;border-radius:8px;margin:.75rem 0;border:1px solid var(--border)}hr{border:none;border-top:2px solid var(--border);margin:1.5rem 0}.footer{margin-top:2rem;padding:1rem 0;border-top:1px solid var(--border);font-size:.8rem;color:var(--text-secondary);text-align:center}.footer a{color:var(--accent);text-decoration:none}@media(max-width:600px){.container{padding:1.5rem 1rem 3rem}h1{font-size:1.5rem}.topbar{padding:0 .75rem;gap:.5rem}.topbar .breadcrumb{display:none}}</style>
+</head>
+<body>
+<div class="topbar">
+<a href="../../../index.html" class="brand">XiangShanLab</a>
+<span class="sep">|</span>
+<a href="../../../index.html">&#127968; 首页</a>
+<span class="sep">|</span>
+<span class="breadcrumb">xiangshan-code | vdot-software | verif</span>
+</div>
+<div class="container">
+<h1>P1 vdot 差分复测检查清单（emu 重建完成后执行）</h1>
+<blockquote>
+<p>对应 <a href="../../2026-CIE-RISC-V-Contest-Application-Track/02_%E8%AE%BE%E8%AE%A1%E6%96%B9%E6%A1%88/08_%E4%BB%BB%E5%8A%A1%E5%AE%8C%E6%88%90%E6%83%85%E5%86%B5CheckList.md">08_任务完成情况CheckList</a> §3.3 与 <a href="../../2026-CIE-RISC-V-Contest-Application-Track/02_%E8%AE%BE%E8%AE%A1%E6%96%B9%E6%A1%88/05_%E9%AA%8C%E8%AF%81%E4%B8%8E%E8%AF%84%E4%BC%B0%E6%96%B9%E6%A1%88.md">05_验证与评估方案</a> §2/§3。<br>
+前置：RTL 已含 vdRen=T 修复（<code>VecDecoder.scala:431</code> <code>OPMVV(T,...)</code>），<code>make emu</code> 重建完成。<br>
+状态图例：⬜ 未执行 ｜ ✅ 通过 ｜ ❌ 失败（记录现象）｜ ⏸ 阻塞</p>
+</blockquote>
+<hr>
+<h2>0. 前置（Linux 完整环境）</h2>
+<ul>
+<li>[ ] <code>git rev-parse HEAD</code> 确认 emu 对应的源码 commit（应含 vdot 修复）</li>
+<li>[ ] <code>build/emu</code> 存在且时间戳晚于 RTL 修复提交（Verilator 重建 ~2.5h）</li>
+<li>[ ] NEMU .so（<code>riscv64-nemu-interpreter-so</code>，master + 官方 defconfig，含 vdot）就绪</li>
+<li>[ ] 测试镜像（<code>vdot_test.bin</code> 等）就绪（NEMU <code>tests/vdot/</code> 编译产物）</li>
+</ul>
+<h2>1. 核心差分复测（本轮目标，验证 oldVd 修复）</h2>
+<ul>
+<li>[ ] 单次 vdot：<code>emu -i vdot_test.bin --diff &lt;nemu.so&gt;</code> → HIT GOOD TRAP，trap code <strong>0x0a</strong></li>
+<li>[ ] 两次 vdot（累加）：→ trap code <strong>0x14</strong>（NEMU 与 RTL 一致 → 修复生效）</li>
+<li>[ ] 连续两条 vdot 且与 vwmaccu.vv / vmacc.vv 穿插（对照：基线累加机制正常）</li>
+<li>[ ] 差分无失配（无 “MISMATCH” / abort 输出）</li>
+</ul>
+<h2>2. 指令行为边界（05 §2 测试矩阵，定向用例）</h2>
+<ul>
+<li>[ ] <code>vl=0</code>：vd 不变</li>
+<li>[ ] <code>vl ∈ {1,2,3}</code>（非 VLMAX）：部分元素更新，其余尾元素按 vta 处理</li>
+<li>[ ] <code>vl=VLMAX</code>（e32/m1 → 4）</li>
+<li>[ ] 掩码：vm=0 全 0（vd 不变）、部分掩码（仅掩码位=1 更新）、掩码寄存器内容随机</li>
+<li>[ ] 尾元素：vta=0（undisturbed）与 vta=1（agnostic→实现按 undisturbed）</li>
+<li>[ ] <strong>vstart≠0 → illegal instruction</strong>（解码侧 <code>VecExceptionGen</code>；同既有向量算术）</li>
+<li>[ ] <strong>vsew≠e32（e8/e16/e64）→ illegal instruction</strong>（<code>vdotEewIllegal</code>）</li>
+<li>[ ] LMUL=2/4（寄存器组分段、uop 数=lmul）</li>
+<li>[ ] 累加回绕：构造 <code>0x7FFFFFFF + 正点积 → 0x80000000</code> 用例</li>
+</ul>
+<h2>3. 随机差分（05 §3 三方一致）</h2>
+<ul>
+<li>[x] 随机激励生成器就绪：<code>gen_vdot_tests.py</code>（vl 边界/掩码/非法 vsew/vstart≠0/lmul/极值数据/1-3 次累加，内置期望 lane0 自校验）</li>
+<li>[x] 定向边界用例就绪：<code>gen_vdot_tests.py --directed</code>（<strong>d01-d12</strong>：回绕上/下溢、全 127/-128、掩码部分命中、尾元素 vta=tu/ta、掩码宽松 vma=ma、vstart≠0、vsew≠e32、混合、4 lane 独立——全 lane 自校验）</li>
+<li>[x] NEMU-only 预验证：<code>run_random_diff.sh --nemu-only</code> —— <strong>180 随机（seed 7/20260817/12345）+ 12 定向 = 192 例全部 PASS</strong></li>
+<li>[ ] RTL(emu) vs NEMU 差分：<code>run_random_diff.sh --emu build/emu --diff nemu.so</code>（Linux，待 emu 重建完成）</li>
+<li>[ ] 失配自动最小化复现（delta-debug）→ 入定向回归集</li>
+</ul>
+<blockquote>
+<p>注意①：退出码采用自校验约定（PASS=0x5A5A/23130，FAIL=0xDEAD/57005）——不能直接用原始 lane0 作退出码（NEMU nemu_trap 对 a0==0x100/0x101 有特殊语义不退出）。<br>
+注意②：<strong>RVV 掩码按位索引</strong>（元素 i 用 v0 的 bit i）——mask 数据必须位打包（<code>.byte 0b00000100</code> 表示仅元素 2），不能按元素逐字节发射（曾因布局错误导致掩码用例静默失配，已修复）。</p>
+</blockquote>
+<h2>4. 回归（无退化）</h2>
+<ul>
+<li>[ ] riscv-tests 全量（标量 + 向量）0 失配（与基线对比）</li>
+<li>[ ] coremark 冒烟（基线 IPC 无回退）</li>
+<li>[ ] kernel 冒烟：<code>gemm_i8_test</code>（标量路径）在 RTL 上以 vdot 加速路径跑通并比对</li>
+</ul>
+<h2>5. 收尾</h2>
+<ul>
+<li>[ ] 更新 <a href="../../2026-CIE-RISC-V-Contest-Application-Track/02_%E8%AE%BE%E8%AE%A1%E6%96%B9%E6%A1%88/08_%E4%BB%BB%E5%8A%A1%E5%AE%8C%E6%88%90%E6%83%85%E5%86%B5CheckList.md">08_CheckList</a> §3.3（最终差分结果、移除&quot;🔍/🔄&quot;状态）</li>
+<li>[ ] 更新 <a href="../../../xiangshan-code/VDOT_IMPLEMENTATION.md">VDOT_IMPLEMENTATION.md</a> 验证情况</li>
+<li>[ ] 记录 emu/源码 commit、seed、trap code 到 <a href="../../2026-CIE-RISC-V-Contest-Application-Track/02_%E8%AE%BE%E8%AE%A1%E6%96%B9%E6%A1%88/05_%E9%AA%8C%E8%AF%81%E4%B8%8E%E8%AF%84%E4%BC%B0%E6%96%B9%E6%A1%88.md">05 §8 验收清单</a></li>
+</ul>
+<hr>
+<h2>快速执行</h2>
+<pre><code class="language-bash"># 核心差分（§1）一行跑完：
+./vdot_diff_check.sh --emu &lt;NOOP_HOME&gt;/build/emu \
+                     --diff &lt;NEMU&gt;/build/riscv64-nemu-interpreter-so \
+                     --img &lt;vdot_test.bin&gt;
+</code></pre>
+
+</div>
+<div class="footer">
+<a href="https://github.com/OpenXiangShan/XiangShanLab">XiangShanLab</a> · 开芯院 · CC BY-NC 4.0
+</div>
+</body>
+</html>

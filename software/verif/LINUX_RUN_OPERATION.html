@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>vdot P1 差分复测 · Linux 操作单（2026-08-17 状态） - XiangShanLab</title>
+<style>*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}:root{--navy:#0f0e1a;--accent:#6c63ff;--bg:#f8f9fc;--text:#1e1e2e;--text-secondary:#5a5a7a;--border:#e8e8f0;--code-bg:#f0f0f8}html{scroll-behavior:smooth;font-size:16px}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Noto Sans SC','PingFang SC','Microsoft YaHei',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.8}.topbar{background:var(--navy);color:#fff;padding:0 1.5rem;height:52px;display:flex;align-items:center;gap:1rem;position:sticky;top:0;z-index:50}.topbar a{color:rgba(255,255,255,0.7);text-decoration:none;font-size:.85rem}.topbar a:hover{color:#fff}.topbar .brand{font-weight:700;font-size:.95rem;color:#fff}.topbar .sep{color:rgba(255,255,255,0.25)}.topbar .breadcrumb{font-size:.78rem;color:rgba(255,255,255,0.5);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.container{max-width:880px;margin:0 auto;padding:2rem 1.5rem 4rem}h1{font-size:2rem;font-weight:800;margin:.5rem 0 1rem;color:var(--navy)}h2{font-size:1.5rem;font-weight:700;margin:1.75rem 0 .75rem;padding-bottom:.4rem;border-bottom:2px solid var(--border);color:var(--navy)}h3{font-size:1.2rem;font-weight:600;margin:1.5rem 0 .5rem;color:var(--navy)}h4{font-size:1.05rem;font-weight:600;margin:1.25rem 0 .4rem}p{margin:.6rem 0}a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}ul,ol{margin:.5rem 0 .5rem 1.5rem}li{margin:.3rem 0}strong{font-weight:700}em{font-style:italic}code{background:var(--code-bg);padding:.15rem .4rem;border-radius:4px;font-family:'SF Mono','Fira Code','Cascadia Code',Menlo,monospace;font-size:.85em}pre{background:#1e1e2e;color:#e0e0e0;padding:1rem 1.25rem;border-radius:10px;overflow-x:auto;margin:.75rem 0;font-size:.85rem;line-height:1.6}pre code{background:none;padding:0;color:inherit;font-size:inherit}blockquote{border-left:4px solid var(--accent);background:rgba(108,99,255,0.04);padding:.75rem 1rem;margin:.75rem 0;border-radius:0 8px 8px 0;color:var(--text-secondary)}table{width:100%;border-collapse:collapse;margin:.75rem 0;font-size:.875rem}th,td{padding:.5rem .75rem;text-align:left;border:1px solid var(--border)}th{background:var(--navy);color:#fff;font-weight:600}img{max-width:100%;height:auto;border-radius:8px;margin:.75rem 0;border:1px solid var(--border)}hr{border:none;border-top:2px solid var(--border);margin:1.5rem 0}.footer{margin-top:2rem;padding:1rem 0;border-top:1px solid var(--border);font-size:.8rem;color:var(--text-secondary);text-align:center}.footer a{color:var(--accent);text-decoration:none}@media(max-width:600px){.container{padding:1.5rem 1rem 3rem}h1{font-size:1.5rem}.topbar{padding:0 .75rem;gap:.5rem}.topbar .breadcrumb{display:none}}</style>
+</head>
+<body>
+<div class="topbar">
+<a href="../../../index.html" class="brand">XiangShanLab</a>
+<span class="sep">|</span>
+<a href="../../../index.html">&#127968; 首页</a>
+<span class="sep">|</span>
+<span class="breadcrumb">xiangshan-code | vdot-software | verif</span>
+</div>
+<div class="container">
+<h1>vdot P1 差分复测 · Linux 操作单（2026-08-17 状态）</h1>
+<blockquote>
+<p>目的：在 Linux 完整环境执行 vdot 差分复测，验证 RTL oldVd 修复（08 §3.3 根因：组合化 Vdot64b 与 FU 2 级流水错位 → 修复 = 恢复内部 2 级流水 + 回滚 VEC_VVV）。<br>
+本单与 <code>vdot_diff_check.sh</code> + <code>P1_DIFF_CHECKLIST.md</code> 配套；执行完成后把结果<strong>同步回</strong> 08 §3.3 与 P1_DIFF_CHECKLIST。</p>
+</blockquote>
+<hr>
+<h2>0. 当前状态（8-17）</h2>
+<table>
+<thead>
+<tr>
+<th>项</th>
+<th>状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>修复代码</td>
+<td>✅ 已落地：<code>Vdot64b.scala</code> 恢复 2 级内部流水（fire 锁 vs1/vs2/oldVd → 组合点积 → fireS1 锁结果）；<code>VecDecoder.scala</code> VDOT_VV 回滚 VEC_VVW→VEC_VVV</td>
+</tr>
+<tr>
+<td><code>mill xiangshan.compile</code></td>
+<td>✅ 通过（~13s）</td>
+</tr>
+<tr>
+<td><code>make sim-verilog</code></td>
+<td>✅ 通过（~628s；<code>Vdot64b.sv</code> 含 vs1/vs2/oldVdReg 三锁存 + fireS1 结果锁存）</td>
+</tr>
+<tr>
+<td><code>make emu</code>（Verilator）</td>
+<td>🔄 后台进行中（~3-4h，nohup，日志 <code>/tmp/make_emu_fix.log</code>）</td>
+</tr>
+</tbody>
+</table>
+<h2>1. 前置检查（emu 编译完成后）</h2>
+<pre><code class="language-bash">cd &lt;NOOP_HOME&gt;            # NOOP_HOME = XiangShan 主仓库（Linux 完整 clone）
+tail -20 /tmp/make_emu_fix.log      # 确认末尾成功（无 ERROR/FAILED）
+ls -la build/emu                    # 时间戳应晚于修复提交
+git rev-parse HEAD                  # 记录当前源码 commit（回填 08 §3.3）
+</code></pre>
+<blockquote>
+<p>⚠️ 服务器重启会因时间戳触发 Verilator 全量重编（~3-4h）；期间勿中断 nohup 进程。</p>
+</blockquote>
+<h2>2. 测试镜像</h2>
+<ul>
+<li>镜像在 NEMU 侧编译（<code>xiangshan-code/NEMU/tests/vdot/</code>）：<pre><code class="language-bash">riscv64-unknown-elf-gcc -nostdlib -T vdot.ld -o vdot_test vdot_test.S \
+  -march=rv64gcv -mabi=lp64d
+riscv64-unknown-elf-objcopy -O binary vdot_test vdot_test.bin
+</code></pre>
+</li>
+<li>本单需要的镜像：<code>vdot_test.bin</code>（两次累加，期望 trap code <strong>0x14</strong>）与 <code>vdot_oldvd_src.bin</code>（oldVd 预置用例，专门验证 oldVd 读取修复，期望值对照 NEMU golden）。</li>
+<li>若 Linux 已存在旧镜像，<strong>必须用修复后的 RTL + 同一 NEMU .so 重跑</strong>。</li>
+</ul>
+<h2>3. 执行差分复测</h2>
+<pre><code class="language-bash"># 方式 A：一键脚本（推荐）
+bash &lt;repo&gt;/vdot-software/verif/vdot_diff_check.sh \
+     --emu  $NOOP_HOME/build/emu \
+     --diff $NOOP_HOME/ready-to-run/riscv64-nemu-interpreter-so \
+     --img  vdot_test.bin \
+     --img  vdot_oldvd_src.bin
+
+# 方式 B：手动单跑（便于看完整日志）
+$NOOP_HOME/build/emu -i vdot_test.bin --diff &lt;nemu.so&gt; 2&gt;&amp;1 | tee /tmp/vdot_diff1.log
+$NOOP_HOME/build/emu -i vdot_oldvd_src.bin --diff &lt;nemu.so&gt; 2&gt;&amp;1 | tee /tmp/vdot_diff2.log
+</code></pre>
+<h2>4. 预期结果与判定</h2>
+<table>
+<thead>
+<tr>
+<th>镜像</th>
+<th>预期</th>
+<th>判定</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>vdot_test.bin</code>（两次累加）</td>
+<td>HIT GOOD TRAP，trap code <strong>0x14</strong>（0x0a×2），差分 0 失配</td>
+<td>修复生效：oldVd 累加恢复</td>
+</tr>
+<tr>
+<td><code>vdot_oldvd_src.bin</code></td>
+<td>HIT GOOD TRAP，trap code 与 NEMU golden 一致</td>
+<td>oldVd 预置值参与累加</td>
+</tr>
+</tbody>
+</table>
+<p><strong>通过</strong> → 更新 08 §3.3（复测 PASS、移除&quot;🔄&quot;）→ 进入 <code>P1_DIFF_CHECKLIST.md</code> §2（边界用例）→ §3（随机差分）→ §4（riscv-tests/coremark 回归）。<br>
+<strong>失败</strong> → 记录现象（trap code/失配指令/波形）→ 对照 §3.3 根因排查（Vdot64b 流水时序、Mgu 接线）→ 更新 08。</p>
+<h2>5. 结果回写（同步进度）</h2>
+<ol>
+<li><code>08_任务完成情况CheckList.md</code> §3.3：填入复测结果、源码 commit、trap code；总览&quot;difftest/全量回归&quot;行 🟡→✅（若 §2 边界 + §3 随机也通过）。</li>
+<li><code>P1_DIFF_CHECKLIST.md</code>：§1 核心差分逐项打勾。</li>
+<li><code>VDOT_IMPLEMENTATION.md</code>：验证情况同步。</li>
+<li>（本地副本）如需回迁：把修复后的 <code>Vdot64b.scala</code> / <code>VecDecoder.scala</code> 从 Linux 同步回 <code>xiangshan-code/</code> 工作副本。</li>
+</ol>
+
+</div>
+<div class="footer">
+<a href="https://github.com/OpenXiangShan/XiangShanLab">XiangShanLab</a> · 开芯院 · CC BY-NC 4.0
+</div>
+</body>
+</html>
