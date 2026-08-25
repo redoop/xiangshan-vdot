@@ -43,6 +43,7 @@ xiangshan-vdot/
 ├── llvm-xkhmvdot/            # G4 LLVM MC 层补丁（vdot.vv 汇编/反汇编支持）
 ├── spike-golden/             # G7 Spike golden patch + 三方一致验证
 ├── b3-synth/                 # G6 B3 面积/功耗/时序综合报告
+├── rtl/                      # Chisel RTL 实现补丁（vdot.vv 硬件链路：yunsuan + 主仓库，含 CHANGES.md 改动说明）
 ├── docs/                     # 设计文档（ISA/微架构/软件栈/验证/CheckList）
 ├── vdot-paper.pdf            # 设计论文（TeX 源码见 vdot-paper.tex）
 ├── README.md                 # 本文档（中文）
