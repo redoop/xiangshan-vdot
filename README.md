@@ -41,6 +41,7 @@ xiangshan-vdot/
 │   ├── kernels/              # gemm_i8 + b2_tinygpt（LLM 演示）
 │   └── verif/                # 差分脚本、随机测试生成器、流水追踪
 ├── llvm-xkhmvdot/            # G4 LLVM MC 层补丁（vdot.vv 汇编/反汇编支持）
+├── nemu-golden/              # G7 NEMU golden（vdot_instr 实现 + 指令级测试）
 ├── spike-golden/             # G7 Spike golden patch + 三方一致验证
 ├── b3-synth/                 # G6 B3 面积/功耗/时序综合报告
 ├── rtl/                      # Chisel RTL 实现补丁（vdot.vv 硬件链路：yunsuan + 主仓库，含 CHANGES.md 改动说明）

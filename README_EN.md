@@ -41,6 +41,7 @@ xiangshan-vdot/
 │   ├── kernels/              # gemm_i8 + b2_tinygpt (LLM demo)
 │   └── verif/                # diff scripts, random test generator, pipeline tracer
 ├── llvm-xkhmvdot/            # G4 LLVM MC-layer patch (vdot.vv asm/disasm support)
+├── nemu-golden/              # G7 NEMU golden (vdot_instr impl + instruction-level tests)
 ├── spike-golden/             # G7 Spike golden patch + three-way consistency
 ├── b3-synth/                 # G6 B3 area/power/timing synthesis report
 ├── rtl/                      # Chisel RTL implementation patches (vdot.vv hw path: yunsuan + main repo, with CHANGES.md)
